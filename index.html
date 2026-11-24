@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>スレスパ2 カード推測ゲーム (Spiredle 2 JP)</title>
+  <style>
+    :root {
+      --bg: #13161f;
+      --panel: #1f2433;
+      --text: #eef0f6;
+      --muted: #98a0b8;
+      --correct: #2a8553;
+      --partial: #c58416;
+      --wrong: #383e54;
+      --border: #32394f;
+    }
+    * { box-sizing: border-box; font-family: "Hiragino Kaku Gothic ProN", "Meiryo", sans-serif; }
+    body {
+      margin: 0; padding: 20px; background: var(--bg); color: var(--text);
+      display: flex; flex-direction: column; align-items: center; min-height: 100vh;
+    }
+    h1 { font-size: 1.45rem; margin-bottom: 4px; letter-spacing: 0.04em; }
+    p.sub { color: var(--muted); font-size: 0.88rem; margin-top: 0; margin-bottom: 16px; text-align: center; }
+    .filter-bar {
+      display: flex; gap: 8px; align-items: center; margin-bottom: 12px; font-size: 0.85rem; color: var(--muted);
+    }
+    select {
+      padding: 6px 10px; border-radius: 6px; border: 1px solid var(--border);
+      background: var(--panel); color: var(--text); font-size: 0.85rem;
+    }
+    .controls {
+      position: relative; width: 100%; max-width: 680px; display: flex; gap: 8px; margin-bottom: 14px;
+    }
+    input {
+      flex: 1; padding: 12px 14px; font-size: 1rem; border-radius: 8px;
+      border: 1px solid var(--border); background: var(--panel); color: var(--text); outline: none;
+    }
+    input:focus { border-color: #6c8cff; }
+    button {
+      padding: 12px 16px; font-size: 0.92rem; font-weight: bold; border: none; border-radius: 8px;
+      background: #4e6ef2; color: #fff; cursor: pointer; white-space: nowrap;
+    }
+    button:hover { background: #3b5bdb; }
+    button.secondary { background: #383f54; }
+    button.secondary:hover { background: #475069; }
+    .suggestions {
+      position: absolute; top: 48px; left: 0; right: 90px; background: #262c3d;
+      border: 1px solid var(--border); border-radius: 8px; max-height: 230px; overflow-y: auto; z-index: 10;
+    }
+    .suggestion-item {
+      padding: 10px 14px; cursor: pointer; display: flex; justify-content: space-between; font-size: 0.92rem;
+    }
+    .suggestion-item:hover { background: #374059; }
+    .suggestion-meta { color: var(--muted); font-size: 0.78rem; }
+    .status { margin-bottom: 14px; font-weight: bold; min-height: 24px; text-align: center; }
+    .board { width: 100%; max-width: 780px; overflow-x: auto; }
+    table { width: 100%; border-collapse: separate; border-spacing: 6px; text-align: center; }
+    th { font-size: 0.78rem; color: var(--muted); padding-bottom: 4px; }
+    td {
+      padding: 11px 8px; border-radius: 6px; font-size: 0.88rem; font-weight: bold;
+      background: var(--wrong);
+    }
+    td.correct { background: var(--correct); }
+    td.partial { background: var(--partial); }
+    .legend {
+      display: flex; gap: 14px; font-size: 0.78rem; color: var(--muted); margin-top: 20px; flex-wrap: wrap; justify-content: center;
+    }
+    .badge { display: inline-block; width: 12px; height: 12px; border-radius: 3px; vertical-align: middle; margin-right: 4px; }
+  </style>
+</head>
+<body>
+
+  <h1>スレスパ2 カード推測ゲーム</h1>
+  <p class="sub">Slay the Spire 2 のカードを6回以内に当てよう！（新キャラ対応）</p>
+
+  <div class="filter-bar">
+    <label for="charFilter">出題対象キャラ:</label>
+    <select id="charFilter">
+      <option value="ALL">すべて（全キャラ＋無色）</option>
+      <option value="リージェント">リージェント（新キャラ）</option>
+      <option value="ネクロバインダー">ネクロバインダー（新キャラ）</option>
+      <option value="アイアンクラッド">アイアンクラッド</option>
+      <option value="サイレント">サイレント</option>
+      <option value="ディフェクト">ディフェクト</option>
+      <option value="フール">フール（Beta）</option>
+      <option value="無色">無色</option>
+    </select>
+  </div>
+
+  <div class="controls">
+    <input type="text" id="cardInput" placeholder="カード名を入力（例：ビッグバン、根絶、溶岩の拳...）" autocomplete="off">
+    <button id="guessBtn">回答</button>
+    <button id="resetBtn" class="secondary">次の問題</button>
+    <div id="suggestions" class="suggestions" style="display:none;"></div>
+  </div>
+
+  <div class="status" id="status">残り回答数: 6回</div>
+
+  <div class="board">
+    <table>
+      <thead>
+        <tr>
+          <th>カード名</th>
+          <th>キャラ</th>
+          <th>タイプ</th>
+          <th>レアリティ</th>
+          <th>コスト</th>
+          <th>キーワード・要素</th>
+        </tr>
+      </thead>
+      <tbody id="boardBody"></tbody>
+    </table>
+  </div>
+
+  <div class="legend">
+    <span><i class="badge" style="background:var(--correct)"></i>完全一致</span>
+    <span><i class="badge" style="background:var(--partial)"></i>一部一致（キーワード）</span>
+    <span><i class="badge" style="background:var(--wrong)"></i>不一致（▲▼は正解のコスト高低）</span>
+  </div>
+
+<script>
+const CARDS = [
+  // アイアンクラッド
+  { name: "強打", char: "アイアンクラッド", type: "アタック", rarity: "初期", cost: 2, kw: ["弱体"] },
+  { name: "溶岩の拳", char: "アイアンクラッド", type: "アタック", rarity: "アンコモン", cost: 1, kw: ["弱体", "廃棄"] },
+  { name: "黒焦げ", char: "アイアンクラッド", type: "アタック", rarity: "コモン", cost: 1, kw: ["自傷"] },
+  { name: "血の壁", char: "アイアンクラッド", type: "スキル", rarity: "アンコモン", cost: 2, kw: ["ブロック", "自傷"] },
+  { name: "ゴロつき", char: "アイアンクラッド", type: "パワー", rarity: "アンコモン", cost: 1, kw: ["弱体"] },
+  { name: "セカンドウィンド", char: "アイアンクラッド", type: "スキル", rarity: "アンコモン", cost: 1, kw: ["ブロック", "廃棄"] },
+  { name: "悪魔化", char: "アイアンクラッド", type: "パワー", rarity: "レア", cost: 3, kw: ["筋力"] },
+  { name: "供物", char: "アイアンクラッド", type: "スキル", rarity: "レア", cost: 0, kw: ["自傷", "エナジー", "ドロー", "廃棄"] },
+  { name: "捕食", char: "アイアンクラッド", type: "アタック", rarity: "レア", cost: 1, kw: ["廃棄", "永劫"] },
+
+  // サイレント
+  { name: "無力化", char: "サイレント", type: "アタック", rarity: "初期", cost: 0, kw: ["脱力"] },
+  { name: "サバイバー", char: "サイレント", type: "スキル", rarity: "初期", cost: 1, kw: ["ブロック", "ディスカード"] },
+  { name: "バックスタブ", char: "サイレント", type: "アタック", rarity: "アンコモン", cost: 0, kw: ["天賦", "廃棄"] },
+  { name: "致死毒", char: "サイレント", type: "スキル", rarity: "コモン", cost: 1, kw: ["毒"] },
+  { name: "触媒", char: "サイレント", type: "スキル", rarity: "アンコモン", cost: 1, kw: ["毒", "廃棄"] },
+  { name: "フットワーク", char: "サイレント", type: "パワー", rarity: "アンコモン", cost: 1, kw: ["敏捷"] },
+  { name: "アドレナリン", char: "サイレント", type: "スキル", rarity: "レア", cost: 0, kw: ["エナジー", "ドロー", "廃棄"] },
+  { name: "死体爆破", char: "サイレント", type: "スキル", rarity: "レア", cost: 2, kw: ["毒", "全体攻撃"] },
+
+  // ディフェクト
+  { name: "ザップ", char: "ディフェクト", type: "スキル", rarity: "初期", cost: 1, kw: ["ライトニング"] },
+  { name: "デュアルキャスト", char: "ディフェクト", type: "スキル", rarity: "初期", cost: 1, kw: ["解放"] },
+  { name: "寒波", char: "ディフェクト", type: "アタック", rarity: "コモン", cost: 1, kw: ["フロスト"] },
+  { name: "氷河", char: "ディフェクト", type: "スキル", rarity: "アンコモン", cost: 2, kw: ["ブロック", "フロスト"] },
+  { name: "デフラグ", char: "ディフェクト", type: "パワー", rarity: "アンコモン", cost: 1, kw: ["集中力"] },
+  { name: "認知偏向", char: "ディフェクト", type: "パワー", rarity: "レア", cost: 1, kw: ["集中力"] },
+  { name: "反響化", char: "ディフェクト", type: "パワー", rarity: "レア", cost: 3, kw: ["エセリアル"] },
+  { name: "電気力学", char: "ディフェクト", type: "パワー", rarity: "レア", cost: 2, kw: ["ライトニング", "全体攻撃"] },
+
+  // リージェント（新キャラ）
+  { name: "落星", char: "リージェント", type: "アタック", rarity: "コモン", cost: 1, kw: ["スター"] },
+  { name: "畏敬", char: "リージェント", type: "スキル", rarity: "コモン", cost: 1, kw: ["スター", "ドロー"] },
+  { name: "衝突軌道", char: "リージェント", type: "アタック", rarity: "コモン", cost: 2, kw: ["スター"] },
+  { name: "ガンマブラスト", char: "リージェント", type: "アタック", rarity: "アンコモン", cost: 2, kw: ["スター", "全体攻撃"] },
+  { name: "輝きの奔流", char: "リージェント", type: "スキル", rarity: "アンコモン", cost: 1, kw: ["スター"] },
+  { name: "月光波", char: "リージェント", type: "スキル", rarity: "アンコモン", cost: 1, kw: ["ブロック", "鍛造"] },
+  { name: "星屑", char: "リージェント", type: "スキル", rarity: "アンコモン", cost: 0, kw: ["スター", "廃棄"] },
+  { name: "シャイニングストライク", char: "リージェント", type: "アタック", rarity: "アンコモン", cost: 1, kw: ["スター"] },
+  { name: "上壁", char: "リージェント", type: "スキル", rarity: "アンコモン", cost: 2, kw: ["ブロック", "鍛造"] },
+  { name: "ビッグバン", char: "リージェント", type: "スキル", rarity: "レア", cost: 0, kw: ["スター", "鍛造", "ドロー", "廃棄"] },
+  { name: "虚無化", char: "リージェント", type: "パワー", rarity: "レア", cost: 3, kw: ["エセリアル"] },
+  { name: "ヘヴンリードリル", char: "リージェント", type: "アタック", rarity: "レア", cost: 2, kw: ["スター"] },
+  { name: "実行せよ", char: "リージェント", type: "スキル", rarity: "レア", cost: 1, kw: ["王室認可"] },
+  { name: "彗星", char: "リージェント", type: "アタック", rarity: "レア", cost: 3, kw: ["スター"] },
+  { name: "星の終わり", char: "リージェント", type: "スキル", rarity: "レア", cost: 2, kw: ["スター", "廃棄"] },
+  { name: "叩き直してやる", char: "リージェント", type: "スキル", rarity: "レア", cost: 1, kw: ["鍛造"] },
+
+  // ネクロバインダー（新キャラ）
+  { name: "祈祷", char: "ネクロバインダー", type: "スキル", rarity: "コモン", cost: 1, kw: ["召喚", "エナジー"] },
+  { name: "天罰", char: "ネクロバインダー", type: "アタック", rarity: "コモン", cost: 1, kw: ["破滅"] },
+  { name: "パチン", char: "ネクロバインダー", type: "アタック", rarity: "コモン", cost: 0, kw: ["保留"] },
+  { name: "根絶", char: "ネクロバインダー", type: "アタック", rarity: "アンコモン", cost: 1, kw: ["破滅"] },
+  { name: "握り潰し", char: "ネクロバインダー", type: "アタック", rarity: "アンコモン", cost: 2, kw: ["召喚"] },
+  { name: "墓場の爆発", char: "ネクロバインダー", type: "アタック", rarity: "アンコモン", cost: 2, kw: ["全体攻撃"] },
+  { name: "埋葬", char: "ネクロバインダー", type: "アタック", rarity: "アンコモン", cost: 1, kw: ["破滅"] },
+  { name: "刻限", char: "ネクロバインダー", type: "アタック", rarity: "レア", cost: 2, kw: ["破滅"] },
+  { name: "大鎌", char: "ネクロバインダー", type: "アタック", rarity: "レア", cost: 2, kw: ["破滅", "リーサル"] },
+  { name: "バンシーの叫び", char: "ネクロバインダー", type: "アタック", rarity: "レア", cost: 2, kw: ["全体攻撃", "脱力"] },
+
+  // フール（Beta）
+  { name: "ワー・チョ・キ", char: "フール", type: "アタック", rarity: "コモン", cost: 1, kw: ["ブロック", "ドロー"] },
+  { name: "神話化", char: "フール", type: "パワー", rarity: "レア", cost: 2, kw: ["生成"] },
+
+  // 無色
+  { name: "神格化", char: "無色", type: "スキル", rarity: "レア", cost: 2, kw: ["廃棄"] },
+  { name: "万能薬", char: "無色", type: "スキル", rarity: "アンコモン", cost: 0, kw: ["アーティファクト", "廃棄"] },
+  { name: "発見", char: "無色", type: "スキル", rarity: "アンコモン", cost: 1, kw: ["生成", "廃棄"] }
+];
+
+let pool = [...CARDS];
+let target = null;
+let guesses = [];
+let gameOver = false;
+const MAX_GUESSES = 6;
+
+const filterEl = document.getElementById("charFilter");
+const inputEl = document.getElementById("cardInput");
+const suggEl = document.getElementById("suggestions");
+const boardBody = document.getElementById("boardBody");
+const statusEl = document.getElementById("status");
+
+function initGame() {
+  const selectedChar = filterEl.value;
+  pool = selectedChar === "ALL" ? [...CARDS] : CARDS.filter(c => c.char === selectedChar);
+  target = pool[Math.floor(Math.random() * pool.length)];
+  guesses = [];
+  gameOver = false;
+  boardBody.innerHTML = "";
+  inputEl.value = "";
+  inputEl.disabled = false;
+  statusEl.textContent = `残り回答数: ${MAX_GUESSES}回（対象: ${pool.length}枚）`;
+  suggEl.style.display = "none";
+}
+
+function renderSuggestions(query) {
+  const q = query.trim();
+  if (!q) {
+    suggEl.style.display = "none";
+    return;
+  }
+  const matches = pool.filter(c =>
+    c.name.includes(q) && !guesses.some(g => g.name === c.name)
+  );
+  if (matches.length === 0) {
+    suggEl.style.display = "none";
+    return;
+  }
+  suggEl.innerHTML = matches.map(c =>
+    `<div class="suggestion-item" data-name="${c.name}">
+      <span>${c.name}</span>
+      <span class="suggestion-meta">${c.char} / ${c.type}</span>
+    </div>`
+  ).join("");
+  suggEl.style.display = "block";
+}
+
+suggEl.addEventListener("click", (e) => {
+  const item = e.target.closest(".suggestion-item");
+  if (item) {
+    inputEl.value = item.dataset.name;
+    suggEl.style.display = "none";
+    submitGuess();
+  }
+});
+
+inputEl.addEventListener("input", () => renderSuggestions(inputEl.value));
+inputEl.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") {
+    suggEl.style.display = "none";
+    submitGuess();
+  }
+});
+
+document.addEventListener("click", (e) => {
+  if (!e.target.closest(".controls")) suggEl.style.display = "none";
+});
+
+filterEl.addEventListener("change", initGame);
+
+function submitGuess() {
+  if (gameOver) return;
+  const val = inputEl.value.trim();
+  const card = pool.find(c => c.name === val) || pool.find(c => c.name.includes(val));
+  if (!card) {
+    statusEl.textContent = "現在の出題対象にあるカード名を候補から選んでください。";
+    return;
+  }
+  if (guesses.some(g => g.name === card.name)) {
+    statusEl.textContent = "そのカードは既に回答済みです。";
+    return;
+  }
+
+  guesses.push(card);
+  inputEl.value = "";
+  appendRow(card);
+
+  if (card.name === target.name) {
+    gameOver = true;
+    inputEl.disabled = true;
+    statusEl.textContent = `🎉 正解！「${target.name}」を ${guesses.length} 回で当てました！`;
+  } else if (guesses.length >= MAX_GUESSES) {
+    gameOver = true;
+    inputEl.disabled = true;
+    statusEl.textContent = `💀 ゲームオーバー！正解は「${target.name}」でした。`;
+  } else {
+    statusEl.textContent = `残り回答数: ${MAX_GUESSES - guesses.length}回`;
+  }
+}
+
+function appendRow(card) {
+  const tr = document.createElement("tr");
+
+  const nameCls = card.name === target.name ? "correct" : "";
+  const charCls = card.char === target.char ? "correct" : "";
+  const typeCls = card.type === target.type ? "correct" : "";
+  const rarityCls = card.rarity === target.rarity ? "correct" : "";
+
+  let costCls = "";
+  let costText = card.cost === -1 ? "X" : card.cost;
+  if (card.cost === target.cost) {
+    costCls = "correct";
+  } else if (card.cost !== -1 && target.cost !== -1) {
+    costText += card.cost < target.cost ? " ▲" : " ▼";
+  }
+
+  const sameKw = card.kw.length === target.kw.length && card.kw.every(k => target.kw.includes(k));
+  const partKw = card.kw.some(k => target.kw.includes(k));
+  const kwCls = sameKw ? "correct" : (partKw ? "partial" : "");
+
+  tr.innerHTML = `
+    <td class="${nameCls}">${card.name}</td>
+    <td class="${charCls}">${card.char}</td>
+    <td class="${typeCls}">${card.type}</td>
+    <td class="${rarityCls}">${card.rarity}</td>
+    <td class="${costCls}">${costText}</td>
+    <td class="${kwCls}">${card.kw.join(" / ")}</td>
+  `;
+  boardBody.prepend(tr);
+}
+
+document.getElementById("guessBtn").addEventListener("click", submitGuess);
+document.getElementById("resetBtn").addEventListener("click", initGame);
+
+initGame();
+</script>
+</body>
+</html>
